@@ -1,4 +1,4 @@
-module redis-queue
+module github.com/icecube092/redis-queue
 
 go 1.18
 
