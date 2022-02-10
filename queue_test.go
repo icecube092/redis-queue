@@ -74,7 +74,7 @@ func (t *test) TestOk() {
 		testStruct = &testStringer{Name: testName}
 	)
 
-	q, err := redisq.NewQueue(t.cfg)
+	q, err := redisq.NewSeqQueue(t.cfg)
 	t.Require().NoError(err)
 
 	err = q.Push(t.ctx, testStruct)
@@ -103,7 +103,7 @@ func (t *test) TestBreak() {
 		testStruct = &testStringer{Name: testName}
 	)
 
-	q, err := redisq.NewQueue(t.cfg)
+	q, err := redisq.NewSeqQueue(t.cfg)
 	t.Require().NoError(err)
 
 	err = q.Push(t.ctx, testStruct)
@@ -132,7 +132,7 @@ func (t *test) TestParallelGet() {
 		testStruct = &testStringer{Name: testName}
 	)
 
-	q, err := redisq.NewQueue(t.cfg)
+	q, err := redisq.NewSeqQueue(t.cfg)
 	t.Require().NoError(err)
 
 	err = q.Push(t.ctx, &testStringer{Name: testName})
@@ -168,7 +168,7 @@ func (t *test) TestParallelGetAfterBreak() {
 		testStruct = &testStringer{Name: testName}
 	)
 
-	q, err := redisq.NewQueue(t.cfg)
+	q, err := redisq.NewSeqQueue(t.cfg)
 	t.Require().NoError(err)
 
 	err = q.Push(t.ctx, &testStringer{Name: testName})
@@ -202,11 +202,50 @@ func (t *test) TestSequentialScan() {
 	var (
 		testName    = "hello"
 		testName2   = "hello2"
+		testName3   = "hello3"
+		testStruct  = &testStringer{Name: testName}
+		testStruct2 = &testStringer{Name: testName2}
+		testStruct3 = &testStringer{Name: testName3}
+	)
+
+	q, err := redisq.NewSeqQueue(t.cfg)
+	t.Require().NoError(err)
+
+	err = q.Push(t.ctx, testStruct)
+	t.Require().NoError(err)
+	err = q.Push(t.ctx, testStruct2)
+	t.Require().NoError(err)
+	err = q.Push(t.ctx, testStruct3)
+
+	q.BeginRead()
+	getStruct := &testStringer{}
+	err = q.Scan(t.ctx, getStruct)
+	t.Require().NoError(err)
+	t.Require().Equal(testStruct, getStruct)
+
+	getStruct2 := &testStringer{}
+	err = q.Scan(t.ctx, getStruct2)
+	t.Require().NoError(err)
+	t.Require().Equal(testStruct2, getStruct2)
+
+	getStruct3 := &testStringer{}
+	err = q.Scan(t.ctx, getStruct3)
+	t.Require().NoError(err)
+	t.Require().Equal(testStruct3, getStruct3)
+
+	err = q.Commit(t.ctx)
+	t.Require().NoError(err)
+}
+
+func (t *test) TestCancel() {
+	var (
+		testName    = "hello"
+		testName2   = "hello2"
 		testStruct  = &testStringer{Name: testName}
 		testStruct2 = &testStringer{Name: testName2}
 	)
 
-	q, err := redisq.NewQueue(t.cfg)
+	q, err := redisq.NewSeqQueue(t.cfg)
 	t.Require().NoError(err)
 
 	err = q.Push(t.ctx, testStruct)
@@ -218,12 +257,17 @@ func (t *test) TestSequentialScan() {
 	getStruct := &testStringer{}
 	err = q.Scan(t.ctx, getStruct)
 	t.Require().NoError(err)
-	t.Require().Equal(testStruct2, getStruct)
-
-	getStruct = &testStringer{}
-	err = q.Scan(t.ctx, getStruct)
-	t.Require().NoError(err)
 	t.Require().Equal(testStruct, getStruct)
 
-	q.Commit(t.ctx)
+	err = q.Cancel()
+	t.Require().NoError(err)
+
+	q.BeginRead()
+	getStruct2 := &testStringer{}
+	err = q.Scan(t.ctx, getStruct2)
+	t.Require().NoError(err)
+	t.Require().Equal(testStruct, getStruct2)
+
+	err = q.Commit(t.ctx)
+	t.Require().NoError(err)
 }

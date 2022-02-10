@@ -8,7 +8,7 @@ import (
 	"reflect"
 )
 
-func NewQueue(cfg *QueueConfig) (Queue, error) {
+func NewSeqQueue(cfg *QueueConfig) (Queue, error) {
 	if err := validateConfig(cfg); err != nil {
 		return nil, fmt.Errorf("validateConfig: %w", err)
 	}
@@ -55,12 +55,8 @@ func (q *queue) Scan(ctx context.Context, t Stringer) error {
 		return ErrNoTx
 	}
 
-	result, err := q.conn.LRange(
-		ctx,
-		q.name,
-		-q.txCounter.Load(),
-		-q.txCounter.Load(),
-	).Result()
+	position := -(q.txCounter.Load() + 1)
+	result, err := q.conn.LRange(ctx, q.name, position, position).Result()
 	if err != nil {
 		return fmt.Errorf("conn.LRange: %w", err)
 	}
@@ -97,10 +93,16 @@ func (q *queue) Rollback(ctx context.Context) error {
 	}
 	defer q.finish()
 
+	pipe := q.conn.Pipeline()
+	defer pipe.Discard()
 	for i := int64(0); i < q.txCounter.Load(); i++ {
-		if err := q.conn.RPopLPush(ctx, q.name, q.name).Err(); err != nil {
+		if err := pipe.RPopLPush(ctx, q.name, q.name).Err(); err != nil {
 			return fmt.Errorf("conn.RPopLPush: %w", err)
 		}
+	}
+
+	if _, err := pipe.Exec(ctx); err != nil {
+		return fmt.Errorf("pipeline.Exec: %w", err)
 	}
 
 	return nil

@@ -3,11 +3,16 @@
 It's a queue-over-redis that provides possibility to works with data like with
 message broker. This is not a highload story, if you need maximum performance
 and persistence - use more usual brokers. Lib works
-over `github.com/go-redis/redis`.
+over [redis lib](https://github.com/go-redis/redis).
 
-## Requires
+## Requirements
 
 - Redis-server >= 6.2.0
+
+## Warnings
+
+- Queue behaviour on cluster is undefined. Now it's single-node.
+- Use persistent mode of redis-server
 
 ## Features:
 
@@ -23,6 +28,12 @@ On `BeginRead` queue locks and unlocks after `Commit`, `Rollback`, or `Cancel`.
 For generic usage with any type lib provides `Stringer` interface
 
 See `queue_test.go` for examples.
+
+## Roadmap
+
+- [ ] Clustered queue
+- [ ] Queue with priority
+- [ ] Non-blocking transactions
 
 ## Run tests
 
