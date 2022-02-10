@@ -1,13 +1,14 @@
-package redis_queue
+package redis_queue_test
 
 import (
 	"context"
 	"encoding/json"
+	"github.com/go-redis/redis/v8"
+	"github.com/stretchr/testify/suite"
 	"sync"
 	"testing"
 
-	"github.com/go-redis/redis/v8"
-	"github.com/stretchr/testify/suite"
+	redis_queue "github.com/icecube092/redis-queue"
 )
 
 type test struct {
@@ -15,7 +16,7 @@ type test struct {
 
 	ctx  context.Context
 	conn redis.UniversalClient
-	cfg  *QueueConfig
+	cfg  *redis_queue.QueueConfig
 }
 
 func TestRun(t *testing.T) {
@@ -33,7 +34,7 @@ func (t *test) SetupSuite() {
 	)
 	t.Require().NoError(redisConn.Ping(t.ctx).Err())
 	t.conn = redisConn
-	t.cfg = &QueueConfig{
+	t.cfg = &redis_queue.QueueConfig{
 		Conn: t.conn,
 		Name: "test",
 		Typ:  &testStringer{},
@@ -72,11 +73,13 @@ func (t *test) TestOk() {
 		testStruct = &testStringer{Name: testName}
 	)
 
-	q, err := NewQueue(t.cfg)
+	q, err := redis_queue.NewQueue(t.cfg)
 	t.Require().NoError(err)
 
 	err = q.Push(t.ctx, testStruct)
 	t.Require().NoError(err)
+
+	q.BeginRead()
 
 	getStruct := &testStringer{}
 	err = q.Scan(t.ctx, getStruct)
@@ -87,10 +90,10 @@ func (t *test) TestOk() {
 	t.Require().NoError(err)
 
 	err = q.Commit(t.ctx)
-	t.Require().ErrorIs(err, ErrNoTx)
+	t.Require().ErrorIs(err, redis_queue.ErrNoTx)
 
-	err = q.Break(t.ctx)
-	t.Require().ErrorIs(err, ErrNoTx)
+	err = q.Rollback(t.ctx)
+	t.Require().ErrorIs(err, redis_queue.ErrNoTx)
 }
 
 func (t *test) TestBreak() {
@@ -99,21 +102,23 @@ func (t *test) TestBreak() {
 		testStruct = &testStringer{Name: testName}
 	)
 
-	q, err := NewQueue(t.cfg)
+	q, err := redis_queue.NewQueue(t.cfg)
 	t.Require().NoError(err)
 
 	err = q.Push(t.ctx, testStruct)
 	t.Require().NoError(err)
 
+	q.BeginRead()
 	getStruct := &testStringer{}
 	err = q.Scan(t.ctx, getStruct)
 	t.Require().NoError(err)
 	t.Require().Equal(testStruct, getStruct)
 
-	err = q.Break(t.ctx)
+	err = q.Rollback(t.ctx)
 	t.Require().NoError(err)
 
 	getStruct = &testStringer{}
+	q.BeginRead()
 	err = q.Scan(t.ctx, getStruct)
 	t.Require().NoError(err)
 	t.Require().Equal(testStruct, getStruct)
@@ -126,12 +131,13 @@ func (t *test) TestParallelGet() {
 		testStruct = &testStringer{Name: testName}
 	)
 
-	q, err := NewQueue(t.cfg)
+	q, err := redis_queue.NewQueue(t.cfg)
 	t.Require().NoError(err)
 
 	err = q.Push(t.ctx, &testStringer{Name: testName})
 	t.Require().NoError(err)
 
+	q.BeginRead()
 	wg.Add(2)
 	getStruct := &testStringer{}
 	err = q.Scan(t.ctx, getStruct)
@@ -140,6 +146,9 @@ func (t *test) TestParallelGet() {
 	wg.Done()
 
 	go func() {
+		q.BeginRead()
+		defer q.Rollback(t.ctx)
+
 		getStruct := &testStringer{}
 		err = q.Scan(t.ctx, getStruct)
 		t.ErrorIs(err, redis.Nil)
@@ -158,13 +167,14 @@ func (t *test) TestParallelGetAfterBreak() {
 		testStruct = &testStringer{Name: testName}
 	)
 
-	q, err := NewQueue(t.cfg)
+	q, err := redis_queue.NewQueue(t.cfg)
 	t.Require().NoError(err)
 
 	err = q.Push(t.ctx, &testStringer{Name: testName})
 	t.Require().NoError(err)
 
 	wg.Add(2)
+	q.BeginRead()
 	getStruct := &testStringer{}
 	err = q.Scan(t.ctx, getStruct)
 	t.Require().NoError(err)
@@ -173,13 +183,46 @@ func (t *test) TestParallelGetAfterBreak() {
 
 	go func() {
 		getStruct := &testStringer{}
+		q.BeginRead()
+		defer q.Rollback(t.ctx)
+
 		err = q.Scan(t.ctx, getStruct)
 		t.NoError(err)
 		t.Equal(testStruct, getStruct)
 		wg.Done()
 	}()
 
-	err = q.Break(t.ctx)
+	err = q.Rollback(t.ctx)
 	t.Require().NoError(err)
 	wg.Wait()
+}
+
+func (t *test) TestSequentialScan() {
+	var (
+		testName    = "hello"
+		testName2   = "hello2"
+		testStruct  = &testStringer{Name: testName}
+		testStruct2 = &testStringer{Name: testName2}
+	)
+
+	q, err := redis_queue.NewQueue(t.cfg)
+	t.Require().NoError(err)
+
+	err = q.Push(t.ctx, testStruct)
+	t.Require().NoError(err)
+	err = q.Push(t.ctx, testStruct2)
+	t.Require().NoError(err)
+
+	q.BeginRead()
+	getStruct := &testStringer{}
+	err = q.Scan(t.ctx, getStruct)
+	t.Require().NoError(err)
+	t.Require().Equal(testStruct2, getStruct)
+
+	getStruct = &testStringer{}
+	err = q.Scan(t.ctx, getStruct)
+	t.Require().NoError(err)
+	t.Require().Equal(testStruct, getStruct)
+
+	q.Commit(t.ctx)
 }
