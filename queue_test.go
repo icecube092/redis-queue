@@ -70,7 +70,7 @@ func (t *testStringer) FromString(s string) error {
 
 func (t *test) TestOk() {
 	var (
-		testName   = "hello"
+		testName   = "testName"
 		testStruct = &testStringer{Name: testName}
 	)
 
@@ -99,7 +99,7 @@ func (t *test) TestOk() {
 
 func (t *test) TestBreak() {
 	var (
-		testName   = "hello"
+		testName   = "testName"
 		testStruct = &testStringer{Name: testName}
 	)
 
@@ -127,7 +127,7 @@ func (t *test) TestBreak() {
 
 func (t *test) TestParallelGet() {
 	var (
-		testName   = "hello"
+		testName   = "testName"
 		wg         = sync.WaitGroup{}
 		testStruct = &testStringer{Name: testName}
 	)
@@ -163,7 +163,7 @@ func (t *test) TestParallelGet() {
 
 func (t *test) TestParallelGetAfterBreak() {
 	var (
-		testName   = "hello"
+		testName   = "testName"
 		wg         = sync.WaitGroup{}
 		testStruct = &testStringer{Name: testName}
 	)
@@ -200,9 +200,9 @@ func (t *test) TestParallelGetAfterBreak() {
 
 func (t *test) TestSequentialScan() {
 	var (
-		testName    = "hello"
-		testName2   = "hello2"
-		testName3   = "hello3"
+		testName    = "testName"
+		testName2   = "testName2"
+		testName3   = "testName3"
 		testStruct  = &testStringer{Name: testName}
 		testStruct2 = &testStringer{Name: testName2}
 		testStruct3 = &testStringer{Name: testName3}
@@ -239,8 +239,8 @@ func (t *test) TestSequentialScan() {
 
 func (t *test) TestCancel() {
 	var (
-		testName    = "hello"
-		testName2   = "hello2"
+		testName    = "testName"
+		testName2   = "testName2"
 		testStruct  = &testStringer{Name: testName}
 		testStruct2 = &testStringer{Name: testName2}
 	)
@@ -267,6 +267,82 @@ func (t *test) TestCancel() {
 	err = q.Scan(t.ctx, getStruct2)
 	t.Require().NoError(err)
 	t.Require().Equal(testStruct, getStruct2)
+
+	err = q.Commit(t.ctx)
+	t.Require().NoError(err)
+}
+
+func (t *test) TestReadToEnd() {
+	var (
+		testName    = "testName"
+		testName2   = "testName2"
+		testStruct  = &testStringer{Name: testName}
+		testStruct2 = &testStringer{Name: testName2}
+	)
+
+	q, err := redisq.NewSeqQueue(t.cfg)
+	t.Require().NoError(err)
+
+	err = q.Push(t.ctx, testStruct)
+	t.Require().NoError(err)
+	err = q.Push(t.ctx, testStruct2)
+	t.Require().NoError(err)
+
+	q.BeginRead()
+	getStruct := &testStringer{}
+	err = q.Scan(t.ctx, getStruct)
+	t.Require().NoError(err)
+	t.Require().Equal(testStruct, getStruct)
+
+	getStruct2 := &testStringer{}
+	err = q.Scan(t.ctx, getStruct2)
+	t.Require().NoError(err)
+	t.Require().Equal(testStruct2, getStruct2)
+
+	getStruct3 := &testStringer{}
+	err = q.Scan(t.ctx, getStruct3)
+	t.Require().ErrorIs(err, redis.Nil)
+
+	err = q.Commit(t.ctx)
+	t.Require().NoError(err)
+}
+
+func (t *test) TestReadToEndWithConcurrentPush() {
+	var (
+		testName    = "testName"
+		testName2   = "testName2"
+		testName3   = "testName3"
+		testStruct  = &testStringer{Name: testName}
+		testStruct2 = &testStringer{Name: testName2}
+		testStruct3 = &testStringer{Name: testName3}
+	)
+
+	q, err := redisq.NewSeqQueue(t.cfg)
+	t.Require().NoError(err)
+
+	err = q.Push(t.ctx, testStruct)
+	t.Require().NoError(err)
+	err = q.Push(t.ctx, testStruct2)
+	t.Require().NoError(err)
+
+	q.BeginRead()
+	getStruct := &testStringer{}
+	err = q.Scan(t.ctx, getStruct)
+	t.Require().NoError(err)
+	t.Require().Equal(testStruct, getStruct)
+
+	getStruct2 := &testStringer{}
+	err = q.Scan(t.ctx, getStruct2)
+	t.Require().NoError(err)
+	t.Require().Equal(testStruct2, getStruct2)
+
+	err = q.Push(t.ctx, testStruct3)
+	t.Require().NoError(err)
+
+	getStruct3 := &testStringer{}
+	err = q.Scan(t.ctx, getStruct3)
+	t.Require().NoError(err)
+	t.Require().Equal(testStruct3, getStruct3)
 
 	err = q.Commit(t.ctx)
 	t.Require().NoError(err)

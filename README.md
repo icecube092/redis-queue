@@ -11,7 +11,7 @@ over [redis lib](https://github.com/go-redis/redis).
 
 ## Warnings
 
-- Queue behaviour on cluster is undefined. Now it's single-node.
+- Queue behaviour on cluster is undefined. Now it's single-node for read.
 - Use persistent mode of redis-server
 
 ## Features:
