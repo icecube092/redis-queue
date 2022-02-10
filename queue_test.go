@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"github.com/go-redis/redis/v8"
 	"github.com/stretchr/testify/suite"
+	"os"
 	"sync"
 	"testing"
 
@@ -28,8 +29,8 @@ func (t *test) SetupSuite() {
 
 	redisConn := redis.NewClient(
 		&redis.Options{
-			Network: "tcp",
-			Addr:    "127.0.0.1:6379",
+			Network: os.Getenv("TEST_REDIS_QUEUE_NETWORK"),
+			Addr:    os.Getenv("TEST_REDIS_QUEUE_ADDR"),
 		},
 	)
 	t.Require().NoError(redisConn.Ping(t.ctx).Err())
