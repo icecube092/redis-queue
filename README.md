@@ -18,7 +18,7 @@ over `github.com/go-redis/redis`.
 - `Rollback` transaction with moving elements into end of queue
 - `Cancel` breaks transaction, remains elements in queue
 
-On `Scan` queue locks and unlocks after `Commit`, `Rollback`, or `Cancel`.
+On `BeginRead` queue locks and unlocks after `Commit`, `Rollback`, or `Cancel`.
 
 For generic usage with any type lib provides `Stringer` interface
 
@@ -26,6 +26,6 @@ See `queue_test.go` for examples.
 
 ## Run tests
 
-- Set `TEST_REDIS_QUEUE_NETWORK` 
+- Set `TEST_REDIS_QUEUE_NETWORK`
 - Set `TEST_REDIS_QUEUE_ADDR`
 - Run `go test ./...`
