@@ -9,7 +9,7 @@ import (
 	"sync"
 	"testing"
 
-	redis_queue "github.com/icecube092/redis-queue"
+	"github.com/icecube092/redisq"
 )
 
 type test struct {
@@ -17,7 +17,7 @@ type test struct {
 
 	ctx  context.Context
 	conn redis.UniversalClient
-	cfg  *redis_queue.QueueConfig
+	cfg  *redisq.QueueConfig
 }
 
 func TestRun(t *testing.T) {
@@ -35,7 +35,7 @@ func (t *test) SetupSuite() {
 	)
 	t.Require().NoError(redisConn.Ping(t.ctx).Err())
 	t.conn = redisConn
-	t.cfg = &redis_queue.QueueConfig{
+	t.cfg = &redisq.QueueConfig{
 		Conn: t.conn,
 		Name: "test",
 		Typ:  &testStringer{},
@@ -74,7 +74,7 @@ func (t *test) TestOk() {
 		testStruct = &testStringer{Name: testName}
 	)
 
-	q, err := redis_queue.NewQueue(t.cfg)
+	q, err := redisq.NewQueue(t.cfg)
 	t.Require().NoError(err)
 
 	err = q.Push(t.ctx, testStruct)
@@ -91,10 +91,10 @@ func (t *test) TestOk() {
 	t.Require().NoError(err)
 
 	err = q.Commit(t.ctx)
-	t.Require().ErrorIs(err, redis_queue.ErrNoTx)
+	t.Require().ErrorIs(err, redisq.ErrNoTx)
 
 	err = q.Rollback(t.ctx)
-	t.Require().ErrorIs(err, redis_queue.ErrNoTx)
+	t.Require().ErrorIs(err, redisq.ErrNoTx)
 }
 
 func (t *test) TestBreak() {
@@ -103,7 +103,7 @@ func (t *test) TestBreak() {
 		testStruct = &testStringer{Name: testName}
 	)
 
-	q, err := redis_queue.NewQueue(t.cfg)
+	q, err := redisq.NewQueue(t.cfg)
 	t.Require().NoError(err)
 
 	err = q.Push(t.ctx, testStruct)
@@ -132,7 +132,7 @@ func (t *test) TestParallelGet() {
 		testStruct = &testStringer{Name: testName}
 	)
 
-	q, err := redis_queue.NewQueue(t.cfg)
+	q, err := redisq.NewQueue(t.cfg)
 	t.Require().NoError(err)
 
 	err = q.Push(t.ctx, &testStringer{Name: testName})
@@ -168,7 +168,7 @@ func (t *test) TestParallelGetAfterBreak() {
 		testStruct = &testStringer{Name: testName}
 	)
 
-	q, err := redis_queue.NewQueue(t.cfg)
+	q, err := redisq.NewQueue(t.cfg)
 	t.Require().NoError(err)
 
 	err = q.Push(t.ctx, &testStringer{Name: testName})
@@ -206,7 +206,7 @@ func (t *test) TestSequentialScan() {
 		testStruct2 = &testStringer{Name: testName2}
 	)
 
-	q, err := redis_queue.NewQueue(t.cfg)
+	q, err := redisq.NewQueue(t.cfg)
 	t.Require().NoError(err)
 
 	err = q.Push(t.ctx, testStruct)
