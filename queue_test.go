@@ -1,4 +1,4 @@
-package redis_queue_test
+package redisq_test
 
 import (
 	"context"

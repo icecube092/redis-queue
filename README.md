@@ -1,4 +1,4 @@
-# Redis-queue
+# Redisq
 
 It's a queue-over-redis that provides possibility to works with data like with
 message broker. This is not a highload story, if you need maximum performance
