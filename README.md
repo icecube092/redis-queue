@@ -1,18 +1,36 @@
 # Redisq
 
-It's a queue-over-redis that provides possibility to works with data like with
-message broker. This is not a highload story, if you need maximum performance
-and persistence - use more usual brokers. Lib works
-over [redis lib](https://github.com/go-redis/redis).
+Redisq is a queue-over-redis that provides simple way to works with queues
+stored in Redis.
+
+Lib works over [redis lib](https://github.com/go-redis/redis).
+
+### Advantages
+
+- Simple - just launch redis-server on persistent mode
+- Enough persistence
+- Good for periodic poll model
+- No need for mature message broker on simple queue task, use if you already
+  have redis-server
+- Distributed write
+
+### Disadvantages
+
+- No broadcasting
+- No distributed read
+- One transaction per time
+
+### Warnings
+
+- Use `noeviction` mode of redis-server for persist your data
 
 ## Requirements
 
 - Redis-server >= 6.2.0
 
-## Warnings
+## Installation
 
-- Queue behaviour on cluster is undefined. Now it's single-node for read.
-- Use persistent mode of redis-server
+`go get github.com/go-redis/redis@latest`
 
 ## Features:
 
@@ -23,20 +41,43 @@ over [redis lib](https://github.com/go-redis/redis).
 - `Rollback` transaction with moving elements into end of queue
 - `Cancel` breaks transaction, remains elements in queue
 
-On `BeginRead` queue locks and unlocks after `Commit`, `Rollback`, or `Cancel`.
+On `BeginRead` queue locks for read and unlocks after `Commit`, `Rollback`,
+or `Cancel`.
 
-For generic usage with any type lib provides `Stringer` interface
+For generic usage with any type lib provides `StringConverter` interface
 
-See `queue_test.go` for examples.
+## Example
+
+```go
+type intStringer int // implements redisq.StringConverter
+
+setter := intStringer(1)
+
+q, _ := redisq.NewSeqQueue(cfg)
+
+q.Push(ctx, setter)
+
+getter := intStringer(0)
+
+q.BeginRead(ctx)
+q.Scan(ctx, getter)
+q.Commit(ctx)
+
+// getter will be intStringer(1)
+```
+
+See `queue_test.go` for more examples.
 
 ## Roadmap
 
-- [ ] Clustered queue
+- [ ] Distributed read
 - [ ] Queue with priority
 - [ ] Non-blocking transactions
 
 ## Run tests
 
-- Set `TEST_REDIS_QUEUE_NETWORK`
-- Set `TEST_REDIS_QUEUE_ADDR`
+**Warning:** tests clear the storage after every test.
+
+- Set `TEST_REDIS_QUEUE_NETWORK` and `TEST_REDIS_QUEUE_ADDR`, or just launch
+  redis-server on `localhost:6379`
 - Run `go test ./...`

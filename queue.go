@@ -3,20 +3,7 @@ package redisq
 import (
 	"context"
 	"fmt"
-	"github.com/go-redis/redis/v8"
-	"go.uber.org/atomic"
-	"sync"
 )
-
-type queue struct {
-	conn      redis.UniversalClient
-	mux       sync.Mutex
-	txState   atomic.Int64
-	txCounter atomic.Int64
-
-	name string
-	typ  Stringer
-}
 
 func validateConfig(cfg *QueueConfig) error {
 	if cfg.Conn == nil {
@@ -39,6 +26,35 @@ func (q *queue) finish() {
 	q.txCounter.Store(0)
 	q.txState.Store(0)
 	q.mux.Unlock()
+}
+
+func (q *queue) setStartMode(beginMode BeginMode) error {
+	switch beginMode {
+	case ErrBeginMode:
+		q.startFunc = q.beginErr
+	case BlockBeginMode:
+		q.startFunc = q.beginBlock
+	default:
+		return fmt.Errorf("unknown BeginMode")
+	}
+
+	return nil
+}
+
+func (q *queue) beginErr() error {
+	if q.txExists() {
+		return ErrAlreadyTx
+	}
+
+	return q.beginBlock()
+}
+
+func (q *queue) beginBlock() error {
+	q.mux.Lock()
+	q.txState.Store(1)
+	q.txCounter.Store(0)
+
+	return nil
 }
 
 func (q *queue) txExists() bool {

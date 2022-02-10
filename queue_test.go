@@ -2,7 +2,6 @@ package redisq_test
 
 import (
 	"context"
-	"encoding/json"
 	"github.com/go-redis/redis/v8"
 	"github.com/stretchr/testify/suite"
 	"os"
@@ -24,7 +23,7 @@ func TestRun(t *testing.T) {
 	suite.Run(t, &test{})
 }
 
-func (t *test) SetupSuite() {
+func (t *test) SetupTest() {
 	t.ctx = context.Background()
 
 	redisConn := redis.NewClient(
@@ -46,28 +45,6 @@ func (t *test) TearDownTest() {
 	t.conn.FlushAll(t.ctx)
 }
 
-type testStringer struct {
-	Name string
-}
-
-func (t *testStringer) ToString() (string, error) {
-	b, err := json.Marshal(t)
-	if err != nil {
-		panic(err)
-	}
-
-	return string(b), nil
-}
-
-func (t *testStringer) FromString(s string) error {
-	err := json.Unmarshal([]byte(s), t)
-	if err != nil {
-		panic(err)
-	}
-
-	return nil
-}
-
 func (t *test) TestOk() {
 	var (
 		testName   = "testName"
@@ -80,12 +57,14 @@ func (t *test) TestOk() {
 	err = q.Push(t.ctx, testStruct)
 	t.Require().NoError(err)
 
-	q.BeginRead()
+	err = q.BeginRead(t.ctx)
+	t.Require().NoError(err)
 
 	getStruct := &testStringer{}
 	err = q.Scan(t.ctx, getStruct)
 	t.Require().NoError(err)
 	t.Require().Equal(testStruct, getStruct)
+	t.Require().Equal(testName, getStruct.Name)
 
 	err = q.Commit(t.ctx)
 	t.Require().NoError(err)
@@ -109,7 +88,9 @@ func (t *test) TestBreak() {
 	err = q.Push(t.ctx, testStruct)
 	t.Require().NoError(err)
 
-	q.BeginRead()
+	err = q.BeginRead(t.ctx)
+	t.Require().NoError(err)
+
 	getStruct := &testStringer{}
 	err = q.Scan(t.ctx, getStruct)
 	t.Require().NoError(err)
@@ -118,8 +99,10 @@ func (t *test) TestBreak() {
 	err = q.Rollback(t.ctx)
 	t.Require().NoError(err)
 
+	err = q.BeginRead(t.ctx)
+	t.Require().NoError(err)
+
 	getStruct = &testStringer{}
-	q.BeginRead()
 	err = q.Scan(t.ctx, getStruct)
 	t.Require().NoError(err)
 	t.Require().Equal(testStruct, getStruct)
@@ -138,7 +121,9 @@ func (t *test) TestParallelGet() {
 	err = q.Push(t.ctx, &testStringer{Name: testName})
 	t.Require().NoError(err)
 
-	q.BeginRead()
+	err = q.BeginRead(t.ctx)
+	t.Require().NoError(err)
+
 	wg.Add(2)
 	getStruct := &testStringer{}
 	err = q.Scan(t.ctx, getStruct)
@@ -147,7 +132,8 @@ func (t *test) TestParallelGet() {
 	wg.Done()
 
 	go func() {
-		q.BeginRead()
+		err = q.BeginRead(t.ctx)
+		t.Require().NoError(err)
 		defer q.Rollback(t.ctx)
 
 		getStruct := &testStringer{}
@@ -175,7 +161,10 @@ func (t *test) TestParallelGetAfterBreak() {
 	t.Require().NoError(err)
 
 	wg.Add(2)
-	q.BeginRead()
+
+	err = q.BeginRead(t.ctx)
+	t.Require().NoError(err)
+
 	getStruct := &testStringer{}
 	err = q.Scan(t.ctx, getStruct)
 	t.Require().NoError(err)
@@ -184,7 +173,9 @@ func (t *test) TestParallelGetAfterBreak() {
 
 	go func() {
 		getStruct := &testStringer{}
-		q.BeginRead()
+		err = q.BeginRead(t.ctx)
+		t.Require().NoError(err)
+
 		defer q.Rollback(t.ctx)
 
 		err = q.Scan(t.ctx, getStruct)
@@ -217,7 +208,9 @@ func (t *test) TestSequentialScan() {
 	t.Require().NoError(err)
 	err = q.Push(t.ctx, testStruct3)
 
-	q.BeginRead()
+	err = q.BeginRead(t.ctx)
+	t.Require().NoError(err)
+
 	getStruct := &testStringer{}
 	err = q.Scan(t.ctx, getStruct)
 	t.Require().NoError(err)
@@ -253,16 +246,20 @@ func (t *test) TestCancel() {
 	err = q.Push(t.ctx, testStruct2)
 	t.Require().NoError(err)
 
-	q.BeginRead()
+	err = q.BeginRead(t.ctx)
+	t.Require().NoError(err)
+
 	getStruct := &testStringer{}
 	err = q.Scan(t.ctx, getStruct)
 	t.Require().NoError(err)
 	t.Require().Equal(testStruct, getStruct)
 
-	err = q.Cancel()
+	err = q.Cancel(t.ctx)
 	t.Require().NoError(err)
 
-	q.BeginRead()
+	err = q.BeginRead(t.ctx)
+	t.Require().NoError(err)
+
 	getStruct2 := &testStringer{}
 	err = q.Scan(t.ctx, getStruct2)
 	t.Require().NoError(err)
@@ -288,7 +285,9 @@ func (t *test) TestReadToEnd() {
 	err = q.Push(t.ctx, testStruct2)
 	t.Require().NoError(err)
 
-	q.BeginRead()
+	err = q.BeginRead(t.ctx)
+	t.Require().NoError(err)
+
 	getStruct := &testStringer{}
 	err = q.Scan(t.ctx, getStruct)
 	t.Require().NoError(err)
@@ -325,7 +324,9 @@ func (t *test) TestReadToEndWithConcurrentPush() {
 	err = q.Push(t.ctx, testStruct2)
 	t.Require().NoError(err)
 
-	q.BeginRead()
+	err = q.BeginRead(t.ctx)
+	t.Require().NoError(err)
+
 	getStruct := &testStringer{}
 	err = q.Scan(t.ctx, getStruct)
 	t.Require().NoError(err)
@@ -346,4 +347,137 @@ func (t *test) TestReadToEndWithConcurrentPush() {
 
 	err = q.Commit(t.ctx)
 	t.Require().NoError(err)
+}
+
+func (t *test) TestErrBeginMode() {
+	var (
+		testName   = "testName"
+		testStruct = &testStringer{Name: testName}
+	)
+
+	t.cfg.BeginMode = redisq.ErrBeginMode
+
+	q, err := redisq.NewSeqQueue(t.cfg)
+	t.Require().NoError(err)
+
+	err = q.Push(t.ctx, testStruct)
+	t.Require().NoError(err)
+
+	err = q.BeginRead(t.ctx)
+	t.Require().NoError(err)
+
+	go func() {
+		err = q.BeginRead(t.ctx)
+		t.Require().ErrorIs(err, redisq.ErrAlreadyTx)
+	}()
+}
+
+func (t *test) TestWrongType() {
+	var (
+		testName   = "testName"
+		testStruct = &testStringer{Name: testName}
+	)
+
+	t.cfg.BeginMode = redisq.ErrBeginMode
+
+	q, err := redisq.NewSeqQueue(t.cfg)
+	t.Require().NoError(err)
+
+	err = q.Push(t.ctx, testStruct)
+	t.Require().NoError(err)
+
+	err = q.Push(t.ctx, &testStringer2{})
+	t.Require().ErrorIs(err, redisq.ErrWrongType)
+}
+
+func (t *test) TestInvalidConfig() {
+	cfg := &redisq.QueueConfig{
+		Conn:      nil,
+		Name:      "",
+		Typ:       nil,
+		BeginMode: -1,
+	}
+
+	var err error
+
+	_, err = redisq.NewSeqQueue(cfg)
+	t.Require().Error(err)
+	t.Require().Contains(err.Error(), "nil conn")
+
+	cfg.Conn = redis.NewClient(&redis.Options{Addr: "192.168.0.1:1"})
+
+	_, err = redisq.NewSeqQueue(cfg)
+	t.Require().Error(err)
+	t.Require().Contains(err.Error(), "ping")
+
+	cfg.Conn = t.conn
+
+	_, err = redisq.NewSeqQueue(cfg)
+	t.Require().Error(err)
+	t.Require().Contains(err.Error(), "empty queue name")
+
+	cfg.Name = "t"
+
+	_, err = redisq.NewSeqQueue(cfg)
+	t.Require().Error(err)
+	t.Require().Contains(err.Error(), "empty type")
+
+	cfg.Typ = &testStringer{}
+
+	_, err = redisq.NewSeqQueue(cfg)
+	t.Require().Error(err)
+	t.Require().Contains(err.Error(), "unknown BeginMode")
+
+	cfg.BeginMode = 2
+
+	_, err = redisq.NewSeqQueue(cfg)
+	t.Require().Error(err)
+	t.Require().Contains(err.Error(), "unknown BeginMode")
+
+	cfg.BeginMode = redisq.BlockBeginMode
+
+	_, err = redisq.NewSeqQueue(cfg)
+	t.Require().NoError(err)
+}
+
+func (t *test) TestCancelNoTx() {
+	q, err := redisq.NewSeqQueue(t.cfg)
+	t.Require().NoError(err)
+
+	err = q.Cancel(t.ctx)
+	t.Require().ErrorIs(err, redisq.ErrNoTx)
+}
+
+func (t *test) TestScanNoTx() {
+	q, err := redisq.NewSeqQueue(t.cfg)
+	t.Require().NoError(err)
+
+	err = q.Scan(t.ctx, &testStringer{})
+	t.Require().ErrorIs(err, redisq.ErrNoTx)
+}
+
+func (t *test) TestPushStringerError() {
+	t.cfg.Typ = &testErrorStringer{}
+	q, err := redisq.NewSeqQueue(t.cfg)
+	t.Require().NoError(err)
+
+	err = q.Push(t.ctx, &testErrorStringer{needErr: true})
+	t.Require().Error(err)
+	t.Require().Contains(err.Error(), "stringer error")
+}
+
+func (t *test) TestScanStringerError() {
+	t.cfg.Typ = &testErrorStringer{}
+	q, err := redisq.NewSeqQueue(t.cfg)
+	t.Require().NoError(err)
+
+	err = q.BeginRead(t.ctx)
+	t.Require().NoError(err)
+
+	err = q.Push(t.ctx, &testErrorStringer{})
+	t.Require().NoError(err)
+
+	err = q.Scan(t.ctx, &testErrorStringer{needErr: true})
+	t.Require().Error(err)
+	t.Require().Contains(err.Error(), "stringer error")
 }

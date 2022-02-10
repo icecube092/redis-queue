@@ -5,8 +5,22 @@ import (
 	"errors"
 	"fmt"
 	"github.com/go-redis/redis/v8"
+	"go.uber.org/atomic"
 	"reflect"
+	"sync"
 )
+
+type queue struct {
+	conn      redis.UniversalClient
+	mux       sync.Mutex
+	txState   atomic.Int64
+	txCounter atomic.Int64
+
+	startFunc func() error
+
+	name string
+	typ  StringConverter
+}
 
 func NewSeqQueue(cfg *QueueConfig) (Queue, error) {
 	if err := validateConfig(cfg); err != nil {
@@ -19,15 +33,20 @@ func NewSeqQueue(cfg *QueueConfig) (Queue, error) {
 		typ:  cfg.Typ,
 	}
 
+	if err := q.setStartMode(cfg.BeginMode); err != nil {
+		return nil, fmt.Errorf("setStartMode: %w", err)
+	}
+
 	return q, nil
 }
 
 var (
 	ErrWrongType = errors.New("type doesn't match")
 	ErrNoTx      = errors.New("no transaction in progress")
+	ErrAlreadyTx = errors.New("transaction already opened")
 )
 
-func (q *queue) Push(ctx context.Context, t Stringer) error {
+func (q *queue) Push(ctx context.Context, t StringConverter) error {
 	if reflect.TypeOf(t) != reflect.TypeOf(q.typ) {
 		return ErrWrongType
 	}
@@ -44,13 +63,11 @@ func (q *queue) Push(ctx context.Context, t Stringer) error {
 	return nil
 }
 
-func (q *queue) BeginRead() {
-	q.mux.Lock()
-	q.txState.Store(1)
-	q.txCounter.Store(0)
+func (q *queue) BeginRead(ctx context.Context) error {
+	return q.startFunc()
 }
 
-func (q *queue) Scan(ctx context.Context, t Stringer) error {
+func (q *queue) Scan(ctx context.Context, t StringConverter) error {
 	if !q.txExists() {
 		return ErrNoTx
 	}
@@ -108,7 +125,7 @@ func (q *queue) Rollback(ctx context.Context) error {
 	return nil
 }
 
-func (q *queue) Cancel() error {
+func (q *queue) Cancel(ctx context.Context) error {
 	if !q.txExists() {
 		return ErrNoTx
 	}
