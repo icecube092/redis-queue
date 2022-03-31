@@ -27,10 +27,11 @@ Lib works over [redis lib](https://github.com/go-redis/redis).
 ## Requirements
 
 - Redis-server >= 6.2.0
+- Go 1.17+
 
 ## Installation
 
-`go get github.com/go-redis/redis@latest`
+`go get github.com/icecube092/redisq@latest`
 
 ## Features:
 
